@@ -1,85 +1,68 @@
-// import Sharp from 'sharp';
-
-export var overrideDeviceMetrics = async (tabId, width, height) => {
-  await chrome.debugger.sendCommand(
-    { tabId },
-    "Emulation.setDeviceMetricsOverride",
-    {
-      width,
-      height,
-      deviceScaleFactor: 1,
-      mobile: false
-    }
-  );
-}
-
 export var getMetrics = async (tabId) => {
-  const metrics = await chrome.debugger.sendCommand(
-    { tabId },
-    "Page.getLayoutMetrics"
-  );
+  const [{result}] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    }
+  });
 
-  return metrics;
+  return result;
 }
 
 export var captureScreenshot = async (tabId, screenshots, beyondViewport) => {
-  const res = await chrome.debugger.sendCommand(
-    { tabId },
-    "Page.captureScreenshot",
-    {
-      format:"png",
-      captureBeyondViewport: beyondViewport
-    }
+  const res = await chrome.tabs.captureVisibleTab(
+    undefined,
+    { format: 'png' }
   );
 
-  return res.data;
+  console.log("Captured screenshot:", res);
+
+  return res;
 }
 
 
-export var mergeScreenshots = async (screenshotUrls) => {
-    async function mergeBase64Node(base64Array) {
-    // 1. Convert base64 strings to raw Node.js binary buffers
-    const imageBuffers = base64Array.map(str => {
-        // Strip data URI prefix if it exists (e.g., "data:image/png;base64,")
-        const cleanBase64 = str.replace(/^data:image\/\w+;base64,/, "");
-        return Buffer.from(cleanBase64, 'base64');
-    });
-
-    // 2. Get dimensions (width and height) for all images
-    const metadataList = await Promise.all(
-        imageBuffers.map(buffer => sharp(buffer).metadata())
+export var mergeScreenshots = async (base64Array) => {
+    // 1. Decode Base64 strings into browser-native ImageBitmaps
+    const bitmaps = await Promise.all(
+        base64Array.map(async (str) => {
+            // Strip data URI prefix if it exists
+            const cleanBase64 = str.replace(/^data:image\/\w+;base64,/, "");
+            
+            // Fetch raw binary blob from the data
+            const res = await fetch(`data:image/png;base64,${cleanBase64}`);
+            const blob = await res.blob();
+            
+            // Create a web worker-safe image bitmap
+            return await createImageBitmap(blob);
+        })
     );
 
-    // 3. Calculate canvas requirements
-    const maxWidth = Math.max(...metadataList.map(meta => meta.width));
-    const totalHeight = metadataList.reduce((sum, meta) => sum + meta.height, 0);
+    // 2. Calculate final image size requirements
+    const maxWidth = Math.max(...bitmaps.map(b => b.width));
+    const totalHeight = bitmaps.reduce((sum, b) => sum + b.height, 0);
 
-    // 4. Prepare the list of image positions for composition
+    // 3. Initialize a headless OffscreenCanvas container
+    const canvas = new OffscreenCanvas(maxWidth, totalHeight);
+    const ctx = canvas.getContext('2d');
+
+    // 4. Stencil images sequentially from top to bottom
     let currentY = 0;
-    const layers = imageBuffers.map((buffer, index) => {
-        const layer = {
-            input: buffer,
-            top: currentY,
-            left: 0
-        };
-        currentY += metadataList[index].height; // Push the next image down
-        return layer;
+    bitmaps.forEach(bitmap => {
+        ctx.drawImage(bitmap, 0, currentY);
+        currentY += bitmap.height;
+        bitmap.close(); // Clean up system memory right away
     });
 
-    // 5. Create a blank canvas container and layer images onto it
-    const mergedImageBuffer = await sharp({
-        create: {
-            width: maxWidth,
-            height: totalHeight,
-            channels: 4, // RGBA (supports transparency)
-            background: { r: 0, g: 0, b: 0, alpha: 0 } // Transparent background
-        }
-    })
-    .composite(layers)
-    .png() // Convert the final result to PNG format
-    .toBuffer();
+    // 5. Convert the canvas back into a clean Base64 data string
+    const finalBlob = await canvas.convertToBlob({ type: 'image/png' });
+    
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(finalBlob);
+    });
 
-    // 6. Return as a single Base64 string
-    return `data:image/png;base64,${mergedImageBuffer.toString('base64')}`;
-}
 }

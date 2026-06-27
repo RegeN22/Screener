@@ -1,4 +1,4 @@
-import { overrideDeviceMetrics, captureScreenshot, getMetrics, mergeScreenshots } from './ScreenShotHandler.js';
+import { captureScreenshot, getMetrics, mergeScreenshots } from './ScreenShotHandler.js';
 import { scrollToNeededLocation, getBiggestScrollableElement } from './ScrollHandler.js';
 
 chrome.runtime.onMessage.addListener(async (message) => {
@@ -8,41 +8,39 @@ chrome.runtime.onMessage.addListener(async (message) => {
 
   try {
     let tabId = await getCurrentActiveTabId();
-    await chrome.debugger.attach({ tabId }, "1.3"); 
+    // await chrome.debugger.attach({ tabId }, "1.3"); 
 
     let screenshots = [];
     let currentHeight = 0
     let metrics = await getMetrics(tabId);
     const biggestElement = await getBiggestScrollableElement(tabId);
-    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
+    // await chrome.debugger.sendCommand({ tabId }, "Page.enable");
 
     // if the biggest scrollable element is taller than the viewport,
     // scroll and capture screenshots
     // else capture a single screenshot of the WHOLE page
-    if (biggestElement && biggestElement.height && biggestElement.height > metrics.layoutViewport.clientHeight) {
+    if (biggestElement && biggestElement.height && biggestElement.height > metrics.height) {
       await scrollToNeededLocation(tabId, 0, biggestElement.biggestElement)
 
       while (currentHeight < biggestElement.height) {
-        await new Promise(r => setTimeout(r, 500));// wait for the scroll to finish
+        await new Promise(r => setTimeout(r, 1000));// wait for the scroll to finish
         let screenshot =await captureScreenshot(tabId, screenshots, false);
         screenshots.push(screenshot);
-        currentHeight += metrics.layoutViewport.clientHeight;
+        currentHeight += metrics.height;
         await scrollToNeededLocation(tabId, currentHeight, biggestElement.biggestElement)
       }
     } else {
-        const width = Math.ceil(metrics.layoutViewport.clientWidth);
-        const height = Math.ceil(metrics.layoutViewport.clientHeight);
-
-        await overrideDeviceMetrics(tabId, width, height);
         await captureScreenshot(tabId, screenshots);
     }
+    let merged = await mergeScreenshots(screenshots);
 
-    downloadScreenshot(mergeScreenshots(screenshots));
+    downloadScreenshot(merged);
   } catch (error) {
     console.error("Error capturing full page:", error);
+    // await chrome.debugger.detach({ tabId });
   }
-  
-  await chrome.debugger.detach({ tabId });
+
+  // await chrome.debugger.detach({ tabId });
 })
 
 var getCurrentActiveTabId = async () => {
@@ -56,7 +54,7 @@ var getCurrentActiveTabId = async () => {
 
 var downloadScreenshot = (url) => {
   chrome.downloads.download({
-    url: `data:image/png;base64,${url}`,
+    url: url,
     filename: "full-page.png"
   });
 }
