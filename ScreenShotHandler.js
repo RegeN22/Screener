@@ -1,4 +1,4 @@
-export var getMetrics = async (tabId) => {
+export const getMetrics = async (tabId) => {
   const [{result}] = await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
@@ -12,19 +12,16 @@ export var getMetrics = async (tabId) => {
   return result;
 }
 
-export var captureScreenshot = async (tabId, screenshots, beyondViewport) => {
+export const captureScreenshot = async (tabId, screenshots) => {
   const res = await chrome.tabs.captureVisibleTab(
     undefined,
     { format: 'png' }
   );
-
-  console.log("Captured screenshot:", res);
-
   return res;
 }
 
 
-export var mergeScreenshots = async (base64Array) => {
+export const mergeScreenshots = async (base64Array) => {
     // 1. Decode Base64 strings into browser-native ImageBitmaps
     const bitmaps = await Promise.all(
         base64Array.map(async (str) => {
@@ -65,4 +62,13 @@ export var mergeScreenshots = async (base64Array) => {
         reader.readAsDataURL(finalBlob);
     });
 
+}
+
+export const getCurrentActiveTabId = async () => {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true
+    });
+
+    return tab.id;
 }

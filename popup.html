@@ -1,26 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Screenshot</title>
+    <title>Screener</title>
     <style>
         body {
             width: 220px;
             padding: 20px;
             font-family: Arial;
+            text-align: center;
         }
-
         button {
             width: 100%;
             padding: 10px;
-            cursor: pointer;
+        }
+
+        .loader {
+            width: 50px;
+            --b: 8px;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: #514b82;
+            -webkit-mask:
+                repeating-conic-gradient(#0000 0deg,#000 1deg 70deg,#0000 71deg 90deg),
+                radial-gradient(farthest-side,#0000 calc(100% - var(--b) - 1px),#000 calc(100% - var(--b)));
+            -webkit-mask-composite: destination-in;
+                    mask-composite: intersect;
+            animation: l5 1s infinite;
+            }
+            @keyframes l5 {to{transform: rotate(.5turn)}
+        }
+
+        .hidden {
+            display: none;
         }
     </style>
 </head>
 <body>
+    <div id="supported-view">
+        <button class="loader"></button>
+    </div>
 
-    <button id="captureBtn">
-        Capture Full Page
-    </button>
+    <!-- VIEW B: When the extension CANNOT run -->
+    <div id="unsupported-view" class="hidden">
+        <h3>Welcome to Screener!</h3>
+        <div class="error-box">
+        <strong>Unfortunately, Screener cannot run here</strong>
+        <p>Chrome restricts browser extensions from capturing internal pages or the Web Store for security.</p>
+        <p>instead, go to your favorite website, and Screener will work as expected!</p>
+        </div>
+    </div>
 
     <script type="module" src="popup.js"></script>
 

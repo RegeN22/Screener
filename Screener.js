@@ -1,5 +1,6 @@
-import { captureScreenshot, getMetrics, mergeScreenshots } from './ScreenShotHandler.js';
+import { getCurrentActiveTabId,captureScreenshot, getMetrics, mergeScreenshots } from './ScreenShotHandler.js';
 import { scrollToNeededLocation, getBiggestScrollableElement } from './ScrollHandler.js';
+import { downloadScreenshot } from './DownloadHandler.js';
 
 chrome.runtime.onMessage.addListener(async (message) => {
   if (message.action !== "captureFullPage") {
@@ -7,54 +8,33 @@ chrome.runtime.onMessage.addListener(async (message) => {
   }
 
   try {
-    let tabId = await getCurrentActiveTabId();
-    // await chrome.debugger.attach({ tabId }, "1.3"); 
-
+    let tabId = message.tabId || await getCurrentActiveTabId();
     let screenshots = [];
     let currentHeight = 0
     let metrics = await getMetrics(tabId);
     const biggestElement = await getBiggestScrollableElement(tabId);
-    // await chrome.debugger.sendCommand({ tabId }, "Page.enable");
 
-    // if the biggest scrollable element is taller than the viewport,
-    // scroll and capture screenshots
+    // if the biggest scrollable element is taller than the viewport, scroll and capture screenshots
     // else capture a single screenshot of the WHOLE page
-    if (biggestElement && biggestElement.height && biggestElement.height > metrics.height) {
+    if (biggestElement && biggestElement.height) {
       await scrollToNeededLocation(tabId, 0, biggestElement.biggestElement)
 
       while (currentHeight < biggestElement.height) {
-        await new Promise(r => setTimeout(r, 1000));// wait for the scroll to finish
-        let screenshot =await captureScreenshot(tabId, screenshots, false);
+        await new Promise(r => setTimeout(r, 1000));// MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND
+        let screenshot = await captureScreenshot(tabId, screenshots);
         screenshots.push(screenshot);
         currentHeight += metrics.height;
         await scrollToNeededLocation(tabId, currentHeight, biggestElement.biggestElement)
       }
     } else {
-        await captureScreenshot(tabId, screenshots);
+      let screenshot = await captureScreenshot(tabId, screenshots);
+      throw new Error("Error finding the biggest scrollable element. Capturing a single screenshot of the whole page instead.");
     }
+
     let merged = await mergeScreenshots(screenshots);
 
     downloadScreenshot(merged);
   } catch (error) {
     console.error("Error capturing full page:", error);
-    // await chrome.debugger.detach({ tabId });
   }
-
-  // await chrome.debugger.detach({ tabId });
 })
-
-var getCurrentActiveTabId = async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true
-    });
-
-    return tab.id;
-}
-
-var downloadScreenshot = (url) => {
-  chrome.downloads.download({
-    url: url,
-    filename: "full-page.png"
-  });
-}

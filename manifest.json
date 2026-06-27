@@ -5,10 +5,8 @@
   "permissions": [
     "activeTab",
     "tabs",
-    "windows",
     "downloads",
-    "scripting",
-    "debugger"
+    "scripting"
   ],
   "background": {
     "service_worker": "Screener.js",
